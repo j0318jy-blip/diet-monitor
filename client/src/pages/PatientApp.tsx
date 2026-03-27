@@ -94,7 +94,7 @@ function RecordFormTab({ patient }: { patient: Patient }) {
   const form = useForm<InsertFoodRecord>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      patientId: Number(patient.id),
+      patientId: patient.id,
       recordTime: format(now, "yyyy-MM-dd'T'HH:mm"),
       mealTime: "점심",
       location: "",
@@ -266,7 +266,7 @@ function RecordHistoryTab({ patient }: { patient: Patient }) {
 
   const { data: records, isLoading } = useQuery<FoodRecord[]>({
     queryKey: ["/api/records", patient.id, selectedDate],
-    queryFn: () => apiRequest("GET", `/api/records/${Number(patient.id)}/date/${selectedDate}`).then(r => r.json()),
+    queryFn: () => apiRequest("GET", `/api/records/${patient.id}/date/${selectedDate}`).then(r => r.json()),
   });
 
   const deleteMutation = useMutation({

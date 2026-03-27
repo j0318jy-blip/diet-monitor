@@ -4,14 +4,12 @@ import { storage } from "./storage";
 import { insertFoodRecordSchema, insertPatientSchema } from "@shared/schema";
 import nodemailer from "nodemailer";
 import { z } from "zod";
-import { format } from "date-fns";
 
-// 치료자 비밀번호 (환경변수 또는 기본값)
 const THERAPIST_PASSWORD = process.env.THERAPIST_PASSWORD || "therapist1234";
 
 export async function registerRoutes(httpServer: Server, app: Express): Promise<void> {
 
-  // ─── 치료자 인증 ───────────────────────────────────────────
+  // 치료자 인증
   app.post("/api/therapist/login", (req, res) => {
     const { password } = req.body;
     if (password === THERAPIST_PASSWORD) {
@@ -21,96 +19,108 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  // ─── 환자 ─────────────────────────────────────────────────
-  // 환자 목록 (치료자용)
-  app.get("/api/patients", (req, res) => {
+  // 환자 목록
+  app.get("/api/patients", async (req, res) => {
     try {
-      res.json(storage.getAllPatients());
-    } catch {
+      const patients = await storage.getAllPatients();
+      res.json(patients);
+    } catch (e: any) {
+      console.error(e);
       res.status(500).json({ error: "환자 목록을 불러오지 못했습니다." });
     }
   });
 
-  // 환자 로그인 (코드로 인증)
-  app.post("/api/patients/login", (req, res) => {
-    const { code } = req.body;
-    if (!code) return res.status(400).json({ error: "코드를 입력하세요." });
-    const patient = storage.getPatientByCode(String(code));
-    if (!patient) return res.status(404).json({ error: "등록된 환자를 찾을 수 없습니다." });
-    res.json(patient);
+  // 환자 로그인
+  app.post("/api/patients/login", async (req, res) => {
+    try {
+      const { code } = req.body;
+      if (!code) return res.status(400).json({ error: "코드를 입력하세요." });
+      const patient = await storage.getPatientByCode(String(code));
+      if (!patient) return res.status(404).json({ error: "등록된 환자를 찾을 수 없습니다." });
+      res.json(patient);
+    } catch (e: any) {
+      console.error(e);
+      res.status(500).json({ error: "로그인에 실패했습니다." });
+    }
   });
 
-  // 환자 등록 (치료자용)
-  app.post("/api/patients", (req, res) => {
+  // 환자 등록
+  app.post("/api/patients", async (req, res) => {
     try {
       const parsed = insertPatientSchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ error: "입력 형식 오류" });
-      // 코드 중복 체크
-      const existing = storage.getPatientByCode(parsed.data.code);
+      const existing = await storage.getPatientByCode(parsed.data.code);
       if (existing) return res.status(409).json({ error: "이미 사용 중인 코드입니다." });
-      const patient = storage.createPatient(parsed.data);
+      const patient = await storage.createPatient(parsed.data);
       res.status(201).json(patient);
-    } catch {
+    } catch (e: any) {
+      console.error(e);
       res.status(500).json({ error: "환자 등록에 실패했습니다." });
     }
   });
 
-  // 환자 삭제 (치료자용)
-  app.delete("/api/patients/:id", (req, res) => {
+  // 환자 삭제
+  app.delete("/api/patients/:id", async (req, res) => {
     try {
-      storage.deletePatient(Number(req.params.id));
+      await storage.deletePatient(Number(req.params.id));
       res.json({ success: true });
-    } catch {
+    } catch (e: any) {
+      console.error(e);
       res.status(500).json({ error: "환자 삭제에 실패했습니다." });
     }
   });
 
-  // ─── 기록 ─────────────────────────────────────────────────
   // 환자별 날짜 기록 조회
-  app.get("/api/records/:patientId/date/:date", (req, res) => {
+  app.get("/api/records/:patientId/date/:date", async (req, res) => {
     try {
-      const records = storage.getRecordsByPatientAndDate(
-        Number(req.params.patientId),
-        req.params.date
-      );
+      const patientId = parseInt(req.params.patientId, 10);
+      if (isNaN(patientId)) return res.json([]);
+      const records = await storage.getRecordsByPatientAndDate(patientId, req.params.date);
       res.json(records);
-    } catch {
+    } catch (e: any) {
+      console.error(e);
       res.status(500).json({ error: "기록을 불러오지 못했습니다." });
     }
   });
 
   // 환자별 전체 기록 조회
-  app.get("/api/records/:patientId", (req, res) => {
+  app.get("/api/records/:patientId", async (req, res) => {
     try {
-      res.json(storage.getRecordsByPatient(Number(req.params.patientId)));
-    } catch {
+      const patientId = parseInt(req.params.patientId, 10);
+      if (isNaN(patientId)) return res.json([]);
+      const records = await storage.getRecordsByPatient(patientId);
+      res.json(records);
+    } catch (e: any) {
+      console.error(e);
       res.status(500).json({ error: "기록을 불러오지 못했습니다." });
     }
   });
 
   // 기록 생성
-  app.post("/api/records", (req, res) => {
+  app.post("/api/records", async (req, res) => {
     try {
       const parsed = insertFoodRecordSchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ error: "입력 형식 오류", details: parsed.error.flatten() });
-      const record = storage.createRecord(parsed.data);
+      const record = await storage.createRecord(parsed.data);
       res.status(201).json(record);
-    } catch {
+    } catch (e: any) {
+      console.error(e);
       res.status(500).json({ error: "기록 저장에 실패했습니다." });
     }
   });
 
   // 기록 삭제
-  app.delete("/api/records/item/:id", (req, res) => {
+  app.delete("/api/records/item/:id", async (req, res) => {
     try {
-      storage.deleteRecord(Number(req.params.id));
+      await storage.deleteRecord(Number(req.params.id));
       res.json({ success: true });
-    } catch {
+    } catch (e: any) {
+      console.error(e);
       res.status(500).json({ error: "기록 삭제에 실패했습니다." });
     }
   });
 
-  // ─── 이메일 전송 ───────────────────────────────────────────
+  // 이메일 전송
   app.post("/api/send-email", async (req, res) => {
     const schema = z.object({
       toEmail: z.string().email(),
@@ -126,8 +136,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const { toEmail, fromEmail, fromPassword, patientId, date } = parsed.data;
 
     try {
-      const patient = storage.getPatientById(patientId);
-      const records = storage.getRecordsByPatientAndDate(patientId, date);
+      const patient = await storage.getPatientById(patientId);
+      const records = await storage.getRecordsByPatientAndDate(patientId, date);
       const moodEmoji = (m: number) => ["😢", "😟", "😐", "🙂", "😊"][m - 1] || "😐";
 
       const rows = records.map(r => `
@@ -204,6 +214,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       res.json({ success: true });
     } catch (e: any) {
+      console.error(e);
       res.status(500).json({ error: "이메일 전송에 실패했습니다.", detail: e.message });
     }
   });
