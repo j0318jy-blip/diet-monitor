@@ -1,0 +1,109 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Soft clinical green-teal palette for healthcare */
+    --background: 160 30% 97%;
+    --foreground: 170 25% 12%;
+    --card: 160 20% 99%;
+    --card-foreground: 170 25% 12%;
+    --popover: 160 20% 99%;
+    --popover-foreground: 170 25% 12%;
+    --primary: 175 65% 28%;
+    --primary-foreground: 160 30% 97%;
+    --secondary: 160 15% 92%;
+    --secondary-foreground: 170 25% 20%;
+    --muted: 160 15% 93%;
+    --muted-foreground: 170 10% 45%;
+    --accent: 160 15% 90%;
+    --accent-foreground: 175 65% 28%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 160 12% 88%;
+    --input: 160 12% 88%;
+    --ring: 175 65% 28%;
+    --radius: 0.625rem;
+
+    /* Chart colors */
+    --chart-1: 175 65% 28%;
+    --chart-2: 160 60% 40%;
+    --chart-3: 140 55% 45%;
+    --chart-4: 30 75% 55%;
+    --chart-5: 0 72% 51%;
+
+    /* Sidebar */
+    --sidebar-background: 160 25% 95%;
+    --sidebar-foreground: 170 25% 18%;
+    --sidebar-primary: 175 65% 28%;
+    --sidebar-primary-foreground: 160 30% 97%;
+    --sidebar-accent: 160 20% 89%;
+    --sidebar-accent-foreground: 170 25% 18%;
+    --sidebar-border: 160 12% 86%;
+    --sidebar-ring: 175 65% 28%;
+  }
+
+  .dark {
+    --background: 170 20% 8%;
+    --foreground: 160 15% 88%;
+    --card: 170 18% 10%;
+    --card-foreground: 160 15% 88%;
+    --popover: 170 18% 10%;
+    --popover-foreground: 160 15% 88%;
+    --primary: 175 50% 52%;
+    --primary-foreground: 170 20% 8%;
+    --secondary: 170 15% 18%;
+    --secondary-foreground: 160 15% 88%;
+    --muted: 170 15% 16%;
+    --muted-foreground: 160 10% 55%;
+    --accent: 170 15% 20%;
+    --accent-foreground: 175 50% 52%;
+    --destructive: 0 65% 55%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 170 12% 22%;
+    --input: 170 12% 22%;
+    --ring: 175 50% 52%;
+
+    --chart-1: 175 50% 52%;
+    --chart-2: 160 45% 55%;
+    --chart-3: 140 45% 55%;
+    --chart-4: 30 70% 60%;
+    --chart-5: 0 65% 60%;
+
+    --sidebar-background: 170 18% 10%;
+    --sidebar-foreground: 160 15% 85%;
+    --sidebar-primary: 175 50% 52%;
+    --sidebar-primary-foreground: 170 20% 8%;
+    --sidebar-accent: 170 15% 18%;
+    --sidebar-accent-foreground: 160 15% 85%;
+    --sidebar-border: 170 12% 22%;
+    --sidebar-ring: 175 50% 52%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Noto Sans KR', 'Pretendard', -apple-system, BlinkMacSystemFont, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+}
+
+/* Mobile-first touch targets */
+@layer utilities {
+  .touch-target {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
+/* Smooth transitions */
+* {
+  transition-property: color, background-color, border-color;
+  transition-duration: 150ms;
+  transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+}
