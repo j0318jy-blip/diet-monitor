@@ -28,6 +28,8 @@ const allowlist = [
   "xlsx",
   "zod",
   "zod-validation-error",
+  "postgres",
+  "drizzle-orm/postgres-js",
 ];
 
 async function buildAll() {
