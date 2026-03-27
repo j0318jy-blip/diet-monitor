@@ -1,0 +1,4 @@
+node_modules/
+dist/
+diet_monitor.db
+.env
