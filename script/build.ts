@@ -2,8 +2,6 @@ import { build as esbuild } from "esbuild";
 import { build as viteBuild } from "vite";
 import { rm, readFile } from "fs/promises";
 
-// server deps to bundle to reduce openat(2) syscalls
-// which helps cold start times
 const allowlist = [
   "@google/generative-ai",
   "axios",
@@ -22,14 +20,13 @@ const allowlist = [
   "openai",
   "passport",
   "passport-local",
+  "postgres",
   "stripe",
   "uuid",
   "ws",
   "xlsx",
   "zod",
   "zod-validation-error",
-  "postgres",
-  "drizzle-orm/postgres-js",
 ];
 
 async function buildAll() {
