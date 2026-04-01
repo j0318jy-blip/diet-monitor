@@ -96,6 +96,21 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  // 환자별 주간 기록 조회
+  app.get("/api/records/:patientId/week", async (req, res) => {
+    try {
+      const patientId = parseInt(req.params.patientId, 10);
+      if (isNaN(patientId)) return res.json([]);
+      const { startDate, endDate } = req.query as { startDate: string; endDate: string };
+      if (!startDate || !endDate) return res.status(400).json({ error: "startDate, endDate가 필요합니다." });
+      const records = await storage.getRecordsByPatientAndWeek(patientId, startDate, endDate);
+      res.json(records);
+    } catch (e: any) {
+      console.error(e);
+      res.status(500).json({ error: "기록을 불러오지 못했습니다." });
+    }
+  });
+
   // 기록 생성
   app.post("/api/records", async (req, res) => {
     try {

@@ -2,23 +2,149 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { format } from "date-fns";
+import { format, startOfWeek, endOfWeek, addWeeks, subWeeks, parseISO } from "date-fns";
+import { ko } from "date-fns/locale";
 import type { Patient, FoodRecord } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { LogOut, UserPlus, Users, Trash2, Send, ChevronRight, Loader2, Info } from "lucide-react";
+import { LogOut, UserPlus, Users, Trash2, Send, ChevronRight, ChevronLeft, Loader2, Info, CalendarDays, Calendar } from "lucide-react";
 
 const moodEmoji = (m: number) => ["😢", "😟", "😐", "🙂", "😊"][m - 1] || "😐";
+const DAY_LABELS = ["일", "월", "화", "수", "목", "금", "토"];
 
-// 환자별 기록 조회 패널
-function PatientRecordsPanel({ patient }: { patient: Patient }) {
+// ─── 주간 뷰 ─────────────────────────────────────────────
+function WeeklyView({ patient }: { patient: Patient }) {
+  const [weekOffset, setWeekOffset] = useState(0);
+  const today = new Date();
+  const weekStart = startOfWeek(addWeeks(today, weekOffset), { weekStartsOn: 1 }); // 월요일 시작
+  const weekEnd = endOfWeek(addWeeks(today, weekOffset), { weekStartsOn: 1 });
+  const startDate = format(weekStart, "yyyy-MM-dd");
+  const endDate = format(weekEnd, "yyyy-MM-dd");
+
+  const { data: records, isLoading } = useQuery<FoodRecord[]>({
+    queryKey: ["/api/records/week", patient.id, startDate],
+    queryFn: () => apiRequest("GET", `/api/records/${patient.id}/week?startDate=${startDate}&endDate=${endDate}`).then(r => r.json()),
+  });
+
+  // 날짜별로 그룹핑
+  const grouped: Record<string, FoodRecord[]> = {};
+  records?.forEach(r => {
+    if (!grouped[r.date]) grouped[r.date] = [];
+    grouped[r.date].push(r);
+  });
+
+  // 월~일 7일 배열
+  const days = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(weekStart);
+    d.setDate(weekStart.getDate() + i);
+    return format(d, "yyyy-MM-dd");
+  });
+
+  const totalRecords = records?.length ?? 0;
+  const totalBinge = records?.filter(r => r.isBinge).length ?? 0;
+  const totalPurge = records?.filter(r => r.purgeType !== "없음").length ?? 0;
+
+  return (
+    <div className="space-y-3">
+      {/* 주간 네비게이션 */}
+      <div className="flex items-center justify-between bg-muted/40 rounded-xl px-3 py-2">
+        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setWeekOffset(w => w - 1)}>
+          <ChevronLeft size={16} />
+        </Button>
+        <div className="text-center">
+          <p className="text-sm font-semibold text-foreground">
+            {format(weekStart, "M월 d일", { locale: ko })} ~ {format(weekEnd, "M월 d일", { locale: ko })}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {weekOffset === 0 ? "이번 주" : weekOffset === -1 ? "지난 주" : `${Math.abs(weekOffset)}주 전`}
+          </p>
+        </div>
+        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setWeekOffset(w => w + 1)} disabled={weekOffset >= 0}>
+          <ChevronRight size={16} />
+        </Button>
+      </div>
+
+      {/* 주간 요약 */}
+      {!isLoading && (
+        <div className="grid grid-cols-3 gap-2">
+          <Card><CardContent className="pt-2 pb-2 text-center"><p className="text-lg font-bold text-primary">{totalRecords}</p><p className="text-xs text-muted-foreground">총 기록</p></CardContent></Card>
+          <Card className={totalBinge > 0 ? "border-destructive/40" : ""}><CardContent className="pt-2 pb-2 text-center"><p className={`text-lg font-bold ${totalBinge > 0 ? "text-destructive" : "text-primary"}`}>{totalBinge}</p><p className="text-xs text-muted-foreground">폭식</p></CardContent></Card>
+          <Card className={totalPurge > 0 ? "border-destructive/40" : ""}><CardContent className="pt-2 pb-2 text-center"><p className={`text-lg font-bold ${totalPurge > 0 ? "text-destructive" : "text-primary"}`}>{totalPurge}</p><p className="text-xs text-muted-foreground">제거행동</p></CardContent></Card>
+        </div>
+      )}
+
+      {/* 날짜별 기록 */}
+      {isLoading ? (
+        Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-16 w-full rounded-xl" />)
+      ) : totalRecords === 0 ? (
+        <p className="text-center text-sm text-muted-foreground py-8">이 주에 기록이 없습니다</p>
+      ) : (
+        <div className="space-y-2">
+          {days.map(date => {
+            const dayRecords = grouped[date] || [];
+            if (dayRecords.length === 0) return null;
+            const dayBinge = dayRecords.filter(r => r.isBinge).length;
+            const dayPurge = dayRecords.filter(r => r.purgeType !== "없음").length;
+            const dayOfWeek = DAY_LABELS[new Date(date + "T00:00:00").getDay()];
+            const isToday = date === format(today, "yyyy-MM-dd");
+
+            return (
+              <div key={date}>
+                {/* 날짜 헤더 */}
+                <div className="flex items-center gap-2 mb-1.5">
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${isToday ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
+                    {dayOfWeek}
+                  </div>
+                  <p className="text-sm font-medium text-foreground">{format(parseISO(date), "M월 d일", { locale: ko })}</p>
+                  <div className="flex gap-1 ml-auto">
+                    <Badge variant="secondary" className="text-xs">{dayRecords.length}건</Badge>
+                    {dayBinge > 0 && <Badge variant="destructive" className="text-xs">폭식 {dayBinge}</Badge>}
+                    {dayPurge > 0 && <Badge variant="outline" className="text-xs border-destructive/50 text-destructive">제거 {dayPurge}</Badge>}
+                  </div>
+                </div>
+
+                {/* 해당 날짜 기록들 */}
+                <div className="space-y-1.5 ml-10">
+                  {dayRecords.map(r => (
+                    <Card key={r.id} className={`border ${r.isBinge ? "border-destructive/30" : "border-border"}`}>
+                      <CardContent className="pt-2 pb-2">
+                        <div className="flex items-start gap-2">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <Badge variant="secondary" className="text-xs">{r.mealTime}</Badge>
+                              {r.isBinge && <Badge variant="destructive" className="text-xs">폭식</Badge>}
+                              {r.purgeType !== "없음" && <Badge variant="outline" className="text-xs border-destructive/50 text-destructive">{r.purgeType}</Badge>}
+                              <span className="text-xs text-muted-foreground ml-auto">{r.recordTime?.slice(11, 16)}</span>
+                            </div>
+                            <p className="text-sm font-medium mt-0.5 truncate">{r.foodContent}</p>
+                            <p className="text-xs text-muted-foreground">{r.location} · {r.amount}</p>
+                            <p className="text-xs text-muted-foreground">{moodEmoji(r.mood)} {r.emotionBefore} → {r.emotionAfter}</p>
+                            {r.situation && <p className="text-xs text-muted-foreground truncate">📍 {r.situation}</p>}
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── 날짜별 뷰 ───────────────────────────────────────────
+function DailyView({ patient }: { patient: Patient }) {
   const today = format(new Date(), "yyyy-MM-dd");
   const [selectedDate, setSelectedDate] = useState(today);
   const [emailOpen, setEmailOpen] = useState(false);
@@ -35,7 +161,7 @@ function PatientRecordsPanel({ patient }: { patient: Patient }) {
   const sendEmail = useMutation({
     mutationFn: () => apiRequest("POST", "/api/send-email", {
       toEmail, fromEmail, fromPassword,
-      patientId: patient.id,
+      patientId: Number(patient.id),
       date: selectedDate,
     }).then(r => r.json()),
     onSuccess: (data) => {
@@ -55,27 +181,18 @@ function PatientRecordsPanel({ patient }: { patient: Patient }) {
 
   return (
     <div className="space-y-3">
-      {/* 날짜 + 이메일 전송 */}
       <div className="flex gap-2 items-center">
-        <Input
-          type="date"
-          value={selectedDate}
-          onChange={e => setSelectedDate(e.target.value)}
-          className="flex-1"
-        />
+        <Input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)} className="flex-1" />
         <Dialog open={emailOpen} onOpenChange={setEmailOpen}>
           <DialogTrigger asChild>
             <Button size="sm" variant="outline" className="gap-1.5 shrink-0">
-              <Send size={14} /> 이메일 전송
+              <Send size={14} /> 이메일
             </Button>
           </DialogTrigger>
           <DialogContent className="max-w-sm">
-            <DialogHeader>
-              <DialogTitle className="text-base">이메일 전송</DialogTitle>
-            </DialogHeader>
+            <DialogHeader><DialogTitle className="text-base">이메일 전송</DialogTitle></DialogHeader>
             <div className="space-y-3 py-2">
-              <p className="text-sm text-muted-foreground">{patient.name} · {selectedDate} 기록지</p>
-
+              <p className="text-sm text-muted-foreground">{patient.name} · {selectedDate}</p>
               <Accordion type="single" collapsible>
                 <AccordionItem value="guide" className="border rounded-lg px-1">
                   <AccordionTrigger className="text-xs py-2 px-2 hover:no-underline text-muted-foreground">
@@ -90,7 +207,6 @@ function PatientRecordsPanel({ patient }: { patient: Patient }) {
                   </AccordionContent>
                 </AccordionItem>
               </Accordion>
-
               <div className="space-y-1.5">
                 <Label className="text-sm">내 Gmail 주소</Label>
                 <Input placeholder="myemail@gmail.com" value={fromEmail} onChange={e => setFromEmail(e.target.value)} type="email" />
@@ -105,11 +221,7 @@ function PatientRecordsPanel({ patient }: { patient: Patient }) {
               </div>
             </div>
             <DialogFooter>
-              <Button
-                onClick={() => sendEmail.mutate()}
-                disabled={!fromEmail || !fromPassword || !toEmail || sendEmail.isPending}
-                className="w-full"
-              >
+              <Button onClick={() => sendEmail.mutate()} disabled={!fromEmail || !fromPassword || !toEmail || sendEmail.isPending} className="w-full">
                 {sendEmail.isPending ? <Loader2 className="animate-spin h-4 w-4 mr-2" /> : <Send size={14} className="mr-2" />}
                 기록지 전송
               </Button>
@@ -118,7 +230,6 @@ function PatientRecordsPanel({ patient }: { patient: Patient }) {
         </Dialog>
       </div>
 
-      {/* 요약 통계 */}
       {records && records.length > 0 && (
         <div className="grid grid-cols-3 gap-2">
           <Card><CardContent className="pt-2 pb-2 text-center"><p className="text-lg font-bold text-primary">{records.length}</p><p className="text-xs text-muted-foreground">기록</p></CardContent></Card>
@@ -127,7 +238,6 @@ function PatientRecordsPanel({ patient }: { patient: Patient }) {
         </div>
       )}
 
-      {/* 기록 목록 */}
       {isLoading ? (
         Array.from({ length: 2 }).map((_, i) => <Skeleton key={i} className="h-16 w-full rounded-xl" />)
       ) : records?.length === 0 ? (
@@ -137,7 +247,7 @@ function PatientRecordsPanel({ patient }: { patient: Patient }) {
           {records?.map(r => (
             <Card key={r.id} className={`border ${r.isBinge ? "border-destructive/30" : "border-border"}`}>
               <CardContent className="pt-2 pb-2">
-                <div className="flex items-start gap-3">
+                <div className="flex items-start gap-2">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <Badge variant="secondary" className="text-xs">{r.mealTime}</Badge>
@@ -147,7 +257,7 @@ function PatientRecordsPanel({ patient }: { patient: Patient }) {
                     </div>
                     <p className="text-sm font-medium mt-1 truncate">{r.foodContent}</p>
                     <p className="text-xs text-muted-foreground">{r.location} · {r.amount}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">{moodEmoji(r.mood)} {r.emotionBefore} → {r.emotionAfter}</p>
+                    <p className="text-xs text-muted-foreground">{moodEmoji(r.mood)} {r.emotionBefore} → {r.emotionAfter}</p>
                     {r.situation && <p className="text-xs text-muted-foreground">📍 {r.situation}</p>}
                   </div>
                 </div>
@@ -160,7 +270,29 @@ function PatientRecordsPanel({ patient }: { patient: Patient }) {
   );
 }
 
-// 환자 추가 다이얼로그
+// ─── 환자 패널 ────────────────────────────────────────────
+function PatientRecordsPanel({ patient }: { patient: Patient }) {
+  return (
+    <Tabs defaultValue="weekly">
+      <TabsList className="w-full mb-3">
+        <TabsTrigger value="weekly" className="flex-1 gap-1.5 text-xs">
+          <CalendarDays size={13} /> 주간 보기
+        </TabsTrigger>
+        <TabsTrigger value="daily" className="flex-1 gap-1.5 text-xs">
+          <Calendar size={13} /> 날짜별 보기
+        </TabsTrigger>
+      </TabsList>
+      <TabsContent value="weekly" className="mt-0">
+        <WeeklyView patient={patient} />
+      </TabsContent>
+      <TabsContent value="daily" className="mt-0">
+        <DailyView patient={patient} />
+      </TabsContent>
+    </Tabs>
+  );
+}
+
+// ─── 환자 추가 다이얼로그 ─────────────────────────────────
 function AddPatientDialog({ onAdded }: { onAdded: () => void }) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
@@ -173,10 +305,7 @@ function AddPatientDialog({ onAdded }: { onAdded: () => void }) {
       createdAt: new Date().toISOString(),
     }).then(r => r.json()),
     onSuccess: (data) => {
-      if (data.error) {
-        toast({ title: "오류", description: data.error, variant: "destructive" });
-        return;
-      }
+      if (data.error) { toast({ title: "오류", description: data.error, variant: "destructive" }); return; }
       toast({ title: `✅ ${name} 환자 등록 완료`, description: `코드: ${code}` });
       setName(""); setCode("");
       setOpen(false);
@@ -188,14 +317,10 @@ function AddPatientDialog({ onAdded }: { onAdded: () => void }) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button size="sm" className="gap-1.5">
-          <UserPlus size={15} /> 환자 추가
-        </Button>
+        <Button size="sm" className="gap-1.5"><UserPlus size={15} /> 환자 추가</Button>
       </DialogTrigger>
       <DialogContent className="max-w-sm">
-        <DialogHeader>
-          <DialogTitle>환자 등록</DialogTitle>
-        </DialogHeader>
+        <DialogHeader><DialogTitle>환자 등록</DialogTitle></DialogHeader>
         <div className="space-y-3 py-2">
           <div className="space-y-1.5">
             <Label>환자 이름</Label>
@@ -203,22 +328,12 @@ function AddPatientDialog({ onAdded }: { onAdded: () => void }) {
           </div>
           <div className="space-y-1.5">
             <Label>접속 코드</Label>
-            <Input
-              placeholder="예: 1234 (숫자 4~8자리)"
-              value={code}
-              onChange={e => setCode(e.target.value)}
-              maxLength={8}
-              className="tracking-widest text-center"
-            />
+            <Input placeholder="예: 1234 (숫자 4~8자리)" value={code} onChange={e => setCode(e.target.value)} maxLength={8} className="tracking-widest text-center" />
             <p className="text-xs text-muted-foreground">환자가 앱에 접속할 때 사용하는 코드입니다</p>
           </div>
         </div>
         <DialogFooter>
-          <Button
-            onClick={() => mutation.mutate()}
-            disabled={!name || !code || mutation.isPending}
-            className="w-full"
-          >
+          <Button onClick={() => mutation.mutate()} disabled={!name || !code || mutation.isPending} className="w-full">
             {mutation.isPending ? <Loader2 className="animate-spin h-4 w-4 mr-2" /> : null}
             등록하기
           </Button>
@@ -228,6 +343,7 @@ function AddPatientDialog({ onAdded }: { onAdded: () => void }) {
   );
 }
 
+// ─── 치료자 메인 앱 ───────────────────────────────────────
 export default function TherapistApp({ onLogout }: { onLogout: () => void }) {
   const { toast } = useToast();
   const qc = useQueryClient();
@@ -248,7 +364,6 @@ export default function TherapistApp({ onLogout }: { onLogout: () => void }) {
 
   return (
     <div className="min-h-screen flex flex-col bg-background max-w-lg mx-auto">
-      {/* 헤더 */}
       <header className="sticky top-0 z-50 bg-background/95 backdrop-blur border-b px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <svg viewBox="0 0 32 32" width="26" height="26" fill="none" className="text-primary">
@@ -268,7 +383,6 @@ export default function TherapistApp({ onLogout }: { onLogout: () => void }) {
       </header>
 
       <div className="px-4 py-5 space-y-4 pb-10">
-        {/* 환자 목록 헤더 */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Users size={18} className="text-primary" />
@@ -278,7 +392,6 @@ export default function TherapistApp({ onLogout }: { onLogout: () => void }) {
           <AddPatientDialog onAdded={() => refetch()} />
         </div>
 
-        {/* 환자 목록 */}
         {isLoading ? (
           Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-16 w-full rounded-xl" />)
         ) : patients?.length === 0 ? (
@@ -292,7 +405,6 @@ export default function TherapistApp({ onLogout }: { onLogout: () => void }) {
             {patients?.map(patient => (
               <Card key={patient.id} className="border border-border">
                 <CardContent className="pt-0 pb-0">
-                  {/* 환자 행 */}
                   <div
                     className="flex items-center justify-between py-3 cursor-pointer"
                     onClick={() => setExpandedPatient(expandedPatient === patient.id ? null : patient.id)}
@@ -304,11 +416,7 @@ export default function TherapistApp({ onLogout }: { onLogout: () => void }) {
                     <div className="flex items-center gap-2">
                       <AlertDialog>
                         <AlertDialogTrigger asChild>
-                          <Button
-                            variant="ghost" size="icon"
-                            className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                            onClick={e => e.stopPropagation()}
-                          >
+                          <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={e => e.stopPropagation()}>
                             <Trash2 size={15} />
                           </Button>
                         </AlertDialogTrigger>
@@ -323,14 +431,9 @@ export default function TherapistApp({ onLogout }: { onLogout: () => void }) {
                           </AlertDialogFooter>
                         </AlertDialogContent>
                       </AlertDialog>
-                      <ChevronRight
-                        size={18}
-                        className={`text-muted-foreground transition-transform ${expandedPatient === patient.id ? "rotate-90" : ""}`}
-                      />
+                      <ChevronRight size={18} className={`text-muted-foreground transition-transform ${expandedPatient === patient.id ? "rotate-90" : ""}`} />
                     </div>
                   </div>
-
-                  {/* 기록 패널 */}
                   {expandedPatient === patient.id && (
                     <div className="border-t pt-3 pb-4">
                       <PatientRecordsPanel patient={patient} />
@@ -343,8 +446,9 @@ export default function TherapistApp({ onLogout }: { onLogout: () => void }) {
         )}
 
         <p className="text-center text-xs text-muted-foreground pt-4">
-          <a href="https://www.perplexity.ai/computer" target="_blank" rel="noopener noreferrer"
-            className="hover:text-primary">Created with Perplexity Computer</a>
+          <a href="https://www.perplexity.ai/computer" target="_blank" rel="noopener noreferrer" className="hover:text-primary">
+            Created with Perplexity Computer
+          </a>
         </p>
       </div>
     </div>

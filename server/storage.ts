@@ -2,7 +2,7 @@ import { drizzle as drizzleSqlite } from "drizzle-orm/better-sqlite3";
 import { drizzle as drizzlePg } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import Database from "better-sqlite3";
-import { eq, desc, and } from "drizzle-orm";
+import { eq, desc, and, gte, lte } from "drizzle-orm";
 import * as schema from "@shared/schema";
 import {
   patients, foodRecords,
@@ -58,6 +58,7 @@ export interface IStorage {
   deletePatient(id: number): Promise<void>;
   getRecordsByPatient(patientId: number): Promise<FoodRecord[]>;
   getRecordsByPatientAndDate(patientId: number, date: string): Promise<FoodRecord[]>;
+  getRecordsByPatientAndWeek(patientId: number, startDate: string, endDate: string): Promise<FoodRecord[]>;
   createRecord(data: InsertFoodRecord): Promise<FoodRecord>;
   deleteRecord(id: number): Promise<void>;
 }
@@ -104,6 +105,10 @@ export const storage: IStorage = {
   async getRecordsByPatientAndDate(patientId: number, date: string) {
     if (isPostgres) return await db.select().from(foodRecords).where(and(eq(foodRecords.patientId, patientId), eq(foodRecords.date, date))).orderBy(foodRecords.recordTime);
     return db.select().from(foodRecords).where(and(eq(foodRecords.patientId, patientId), eq(foodRecords.date, date))).orderBy(foodRecords.recordTime).all();
+  },
+  async getRecordsByPatientAndWeek(patientId: number, startDate: string, endDate: string) {
+    if (isPostgres) return await db.select().from(foodRecords).where(and(eq(foodRecords.patientId, patientId), gte(foodRecords.date, startDate), lte(foodRecords.date, endDate))).orderBy(foodRecords.date, foodRecords.recordTime);
+    return db.select().from(foodRecords).where(and(eq(foodRecords.patientId, patientId), gte(foodRecords.date, startDate), lte(foodRecords.date, endDate))).orderBy(foodRecords.date, foodRecords.recordTime).all();
   },
   async createRecord(data: InsertFoodRecord) {
     if (isPostgres) {
