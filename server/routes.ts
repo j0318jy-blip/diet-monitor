@@ -124,6 +124,19 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  // 기록 수정
+  app.patch("/api/records/item/:id", async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "잘못된 ID입니다." });
+      const record = await storage.updateRecord(id, req.body);
+      res.json(record);
+    } catch (e: any) {
+      console.error(e);
+      res.status(500).json({ error: "기록 수정에 실패했습니다." });
+    }
+  });
+
   // 기록 삭제
   app.delete("/api/records/item/:id", async (req, res) => {
     try {

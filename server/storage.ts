@@ -60,6 +60,7 @@ export interface IStorage {
   getRecordsByPatientAndDate(patientId: number, date: string): Promise<FoodRecord[]>;
   getRecordsByPatientAndWeek(patientId: number, startDate: string, endDate: string): Promise<FoodRecord[]>;
   createRecord(data: InsertFoodRecord): Promise<FoodRecord>;
+  updateRecord(id: number, data: Partial<InsertFoodRecord>): Promise<FoodRecord>;
   deleteRecord(id: number): Promise<void>;
 }
 
@@ -116,6 +117,13 @@ export const storage: IStorage = {
       return rows[0];
     }
     return db.insert(foodRecords).values(data).returning().get();
+  },
+  async updateRecord(id: number, data: Partial<InsertFoodRecord>) {
+    if (isPostgres) {
+      const rows = await db.update(foodRecords).set(data).where(eq(foodRecords.id, id)).returning();
+      return rows[0];
+    }
+    return db.update(foodRecords).set(data).where(eq(foodRecords.id, id)).returning().get();
   },
   async deleteRecord(id: number) {
     if (isPostgres) {
