@@ -2,10 +2,11 @@ import { drizzle as drizzleSqlite } from "drizzle-orm/better-sqlite3";
 import { drizzle as drizzlePg } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import Database from "better-sqlite3";
-import { eq, desc, and, gte, lte } from "drizzle-orm";
+import { eq, desc, and, gte, lte, isNull, or } from "drizzle-orm";
 import * as schema from "@shared/schema";
 import {
-  patients, foodRecords,
+  therapists, patients, foodRecords,
+  type InsertTherapist, type Therapist,
   type InsertPatient, type Patient,
   type InsertFoodRecord, type FoodRecord,
 } from "@shared/schema";
@@ -22,11 +23,17 @@ if (isPostgres) {
 } else {
   const sqlite = new Database("diet_monitor.db");
   sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS therapists (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
     CREATE TABLE IF NOT EXISTS patients (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
       code TEXT NOT NULL UNIQUE,
-      created_at TEXT NOT NULL
+      created_at TEXT NOT NULL,
+      therapist_id INTEGER
     );
     CREATE TABLE IF NOT EXISTS food_records (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -45,17 +52,31 @@ if (isPostgres) {
       notes TEXT NOT NULL DEFAULT '',
       date TEXT NOT NULL
     );
+    -- 기존 patients 테이블에 therapist_id 컬럼 없으면 추가
+    CREATE TABLE IF NOT EXISTS _migration_done (id INTEGER PRIMARY KEY);
   `);
+  // therapist_id 컬럼 마이그레이션
+  try { sqlite.exec(`ALTER TABLE patients ADD COLUMN therapist_id INTEGER`); } catch {}
   db = drizzleSqlite(sqlite, { schema });
   console.log("Using local SQLite");
 }
 
 export interface IStorage {
+  // 치료자
+  getAllTherapists(): Promise<Therapist[]>;
+  getTherapistById(id: number): Promise<Therapist | undefined>;
+  createTherapist(data: InsertTherapist): Promise<Therapist>;
+  deleteTherapist(id: number): Promise<void>;
+
+  // 환자
   getAllPatients(): Promise<Patient[]>;
+  getPatientsByTherapist(therapistId: number): Promise<Patient[]>;
   getPatientByCode(code: string): Promise<Patient | undefined>;
   getPatientById(id: number): Promise<Patient | undefined>;
   createPatient(data: InsertPatient): Promise<Patient>;
   deletePatient(id: number): Promise<void>;
+
+  // 기록
   getRecordsByPatient(patientId: number): Promise<FoodRecord[]>;
   getRecordsByPatientAndDate(patientId: number, date: string): Promise<FoodRecord[]>;
   getRecordsByPatientAndWeek(patientId: number, startDate: string, endDate: string): Promise<FoodRecord[]>;
@@ -65,29 +86,49 @@ export interface IStorage {
 }
 
 export const storage: IStorage = {
+  // ─── 치료자 ────────────────────────────────────────────
+  async getAllTherapists() {
+    if (isPostgres) return await db.select().from(therapists).orderBy(therapists.name);
+    return db.select().from(therapists).orderBy(therapists.name).all();
+  },
+  async getTherapistById(id: number) {
+    if (isPostgres) { const rows = await db.select().from(therapists).where(eq(therapists.id, id)); return rows[0]; }
+    return db.select().from(therapists).where(eq(therapists.id, id)).get();
+  },
+  async createTherapist(data: InsertTherapist) {
+    if (isPostgres) { const rows = await db.insert(therapists).values(data).returning(); return rows[0]; }
+    return db.insert(therapists).values(data).returning().get();
+  },
+  async deleteTherapist(id: number) {
+    // 해당 치료자의 환자들 therapistId를 null로
+    if (isPostgres) {
+      await db.update(patients).set({ therapistId: null }).where(eq(patients.therapistId, id));
+      await db.delete(therapists).where(eq(therapists.id, id));
+    } else {
+      db.update(patients).set({ therapistId: null }).where(eq(patients.therapistId, id)).run();
+      db.delete(therapists).where(eq(therapists.id, id)).run();
+    }
+  },
+
+  // ─── 환자 ──────────────────────────────────────────────
   async getAllPatients() {
     if (isPostgres) return await db.select().from(patients).orderBy(patients.name);
     return db.select().from(patients).orderBy(patients.name).all();
   },
+  async getPatientsByTherapist(therapistId: number) {
+    if (isPostgres) return await db.select().from(patients).where(eq(patients.therapistId, therapistId)).orderBy(patients.name);
+    return db.select().from(patients).where(eq(patients.therapistId, therapistId)).orderBy(patients.name).all();
+  },
   async getPatientByCode(code: string) {
-    if (isPostgres) {
-      const rows = await db.select().from(patients).where(eq(patients.code, code));
-      return rows[0];
-    }
+    if (isPostgres) { const rows = await db.select().from(patients).where(eq(patients.code, code)); return rows[0]; }
     return db.select().from(patients).where(eq(patients.code, code)).get();
   },
   async getPatientById(id: number) {
-    if (isPostgres) {
-      const rows = await db.select().from(patients).where(eq(patients.id, id));
-      return rows[0];
-    }
+    if (isPostgres) { const rows = await db.select().from(patients).where(eq(patients.id, id)); return rows[0]; }
     return db.select().from(patients).where(eq(patients.id, id)).get();
   },
   async createPatient(data: InsertPatient) {
-    if (isPostgres) {
-      const rows = await db.insert(patients).values(data).returning();
-      return rows[0];
-    }
+    if (isPostgres) { const rows = await db.insert(patients).values(data).returning(); return rows[0]; }
     return db.insert(patients).values(data).returning().get();
   },
   async deletePatient(id: number) {
@@ -99,6 +140,8 @@ export const storage: IStorage = {
       db.delete(patients).where(eq(patients.id, id)).run();
     }
   },
+
+  // ─── 기록 ──────────────────────────────────────────────
   async getRecordsByPatient(patientId: number) {
     if (isPostgres) return await db.select().from(foodRecords).where(eq(foodRecords.patientId, patientId)).orderBy(desc(foodRecords.recordTime));
     return db.select().from(foodRecords).where(eq(foodRecords.patientId, patientId)).orderBy(desc(foodRecords.recordTime)).all();
@@ -112,24 +155,15 @@ export const storage: IStorage = {
     return db.select().from(foodRecords).where(and(eq(foodRecords.patientId, patientId), gte(foodRecords.date, startDate), lte(foodRecords.date, endDate))).orderBy(foodRecords.date, foodRecords.recordTime).all();
   },
   async createRecord(data: InsertFoodRecord) {
-    if (isPostgres) {
-      const rows = await db.insert(foodRecords).values(data).returning();
-      return rows[0];
-    }
+    if (isPostgres) { const rows = await db.insert(foodRecords).values(data).returning(); return rows[0]; }
     return db.insert(foodRecords).values(data).returning().get();
   },
   async updateRecord(id: number, data: Partial<InsertFoodRecord>) {
-    if (isPostgres) {
-      const rows = await db.update(foodRecords).set(data).where(eq(foodRecords.id, id)).returning();
-      return rows[0];
-    }
+    if (isPostgres) { const rows = await db.update(foodRecords).set(data).where(eq(foodRecords.id, id)).returning(); return rows[0]; }
     return db.update(foodRecords).set(data).where(eq(foodRecords.id, id)).returning().get();
   },
   async deleteRecord(id: number) {
-    if (isPostgres) {
-      await db.delete(foodRecords).where(eq(foodRecords.id, id));
-    } else {
-      db.delete(foodRecords).where(eq(foodRecords.id, id)).run();
-    }
+    if (isPostgres) { await db.delete(foodRecords).where(eq(foodRecords.id, id)); }
+    else { db.delete(foodRecords).where(eq(foodRecords.id, id)).run(); }
   },
 };
