@@ -146,10 +146,6 @@ export default function LoginPage({ onLogin }: { onLogin: (s: Exclude<Session, n
           </TabsContent>
         </Tabs>
 
-        <p className="text-center text-xs text-muted-foreground">
-          <a href="https://www.perplexity.ai/computer" target="_blank" rel="noopener noreferrer"
-            className="hover:text-primary">Created with Perplexity Computer</a>
-        </p>
       </div>
     </div>
   );

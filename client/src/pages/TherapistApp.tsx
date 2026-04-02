@@ -558,11 +558,6 @@ export default function TherapistApp({ onLogout }: { onLogout: () => void }) {
           <TherapistSelect onSelect={setSelectedTherapist} />
         )}
 
-        <p className="text-center text-xs text-muted-foreground pt-6">
-          <a href="https://www.perplexity.ai/computer" target="_blank" rel="noopener noreferrer" className="hover:text-primary">
-            Created with Perplexity Computer
-          </a>
-        </p>
       </div>
     </div>
   );

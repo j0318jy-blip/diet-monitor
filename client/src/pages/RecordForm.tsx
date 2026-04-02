@@ -314,10 +314,6 @@ export default function RecordForm() {
       </Form>
 
       <footer className="text-center pt-2 pb-1">
-        <a href="https://www.perplexity.ai/computer" target="_blank" rel="noopener noreferrer"
-          className="text-xs text-muted-foreground hover:text-primary">
-          Created with Perplexity Computer
-        </a>
       </footer>
     </div>
   );
