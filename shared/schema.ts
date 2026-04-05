@@ -13,13 +13,13 @@ export const insertTherapistSchema = createInsertSchema(therapists).omit({ id: t
 export type InsertTherapist = z.infer<typeof insertTherapistSchema>;
 export type Therapist = typeof therapists.$inferSelect;
 
-// 환자 테이블 (therapistId 추가)
+// 환자 테이블
 export const patients = sqliteTable("patients", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   name: text("name").notNull(),
   code: text("code").notNull().unique(),
   createdAt: text("created_at").notNull(),
-  therapistId: integer("therapist_id"), // null 허용 (기존 환자 호환)
+  therapistId: integer("therapist_id"),
 });
 
 export const insertPatientSchema = createInsertSchema(patients).omit({ id: true });
